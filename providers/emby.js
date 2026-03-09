@@ -149,4 +149,6 @@ function readText(res) {
 }
 
 // Export for Nuvio
-if (typeof module !== "undefined") module.exports = { getStreams };
+if (typeof module !== "undefined" && module.exports) module.exports = { getStreams };
+if (typeof exports !== "undefined") exports.getStreams = getStreams;
+if (typeof globalThis !== "undefined") globalThis.getStreams = getStreams;
