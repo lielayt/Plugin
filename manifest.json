@@ -5,9 +5,6 @@
     {
       "id": "emby",
       "name": "My Emby Server",
-      "description": "Streams from my personal Emby server",
-      "version": "1.0.0",
-      "author": "You",
       "supportedTypes": [
         "movie",
         "tv"
