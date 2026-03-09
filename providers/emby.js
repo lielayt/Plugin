@@ -3,6 +3,7 @@ const PROVIDER_ID = "emby";
 const PROVIDER_NAME = "Emby";
 const CREDENTIALS_GIST_RAW_URL = "https://gist.githubusercontent.com/lielayt/01e8aec73350f3d7b35469d69eb15dc6/raw";
 const CREDENTIALS_OWNER_LABEL = "Liel";
+const TM = "0e2acb22fd48bcb38470425d888b7bbb"
 let cachedCredentialsPromise = null;
 
 function getStreams(tmdbId, mediaType, season, episode) {
@@ -21,16 +22,27 @@ function getStreams(tmdbId, mediaType, season, episode) {
             if (isTv) {
                 return findSeriesByTmdb(token, userId, tmdbId)
                     .then(series => {
+
+                        if (!series) {
+                            console.log(`[${PROVIDER_NAME}] TMDB match failed, trying name search`);
+
+                            return getTmdbTitle(tmdbId, "tv")
+                                .then(name => {
+                                    if (!name) return null;
+                                    return searchByName(token, name);
+                                });
+                        }
+
+                        return series;
+                    })
+                    .then(series => {
                         if (!series || seasonNum == null || episodeNum == null) {
-                            console.log(`[${PROVIDER_NAME}] no series or missing season/episode`);
                             return [];
                         }
+
                         return findEpisode(token, userId, series.Id, seasonNum, episodeNum)
                             .then(ep => {
-                                if (!ep) {
-                                    console.log(`[${PROVIDER_NAME}] episode not found for S${seasonNum}E${episodeNum}`);
-                                    return [];
-                                }
+                                if (!ep) return [];
                                 return toStream(ep, token).then(stream => [stream]);
                             });
                     });
@@ -38,11 +50,22 @@ function getStreams(tmdbId, mediaType, season, episode) {
 
             return findMovieByTmdb(token, userId, tmdbId)
                 .then(movie => {
-                    if (!movie) {
-                        console.log(`[${PROVIDER_NAME}] movie not found`);
-                        return [];
+                    if (movie) {
+                        return toStream(movie, token).then(stream => [stream]);
                     }
-                    return toStream(movie, token).then(stream => [stream]);
+
+                    console.log(`[${PROVIDER_NAME}] TMDB match failed, trying name search`);
+
+                    return getTmdbTitle(tmdbId, "movie")
+                        .then(name => {
+                            if (!name) return [];
+
+                            return searchByName(token, name);
+                        })
+                        .then(result => {
+                            if (!result) return [];
+                            return toStream(result, token).then(stream => [stream]);
+                        });
                 });
         })
         .catch(err => {
@@ -146,6 +169,27 @@ function readJson(res) {
 function readText(res) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
+}
+
+function searchByName(token, name) {
+    const url = `${EMBY_SERVER}/emby/Items?SearchTerm=${encodeURIComponent(name)}&IncludeItemTypes=Movie,Series&Recursive=true&Limit=20&api_key=${token}`;
+
+    return fetch(url)
+        .then(readJson)
+        .then(data => data.Items && data.Items[0]);
+}
+
+function getTmdbTitle(tmdbId, mediaType) {
+    const type = mediaType === "movie" ? "movie" : "tv";
+
+    const url = `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TM}&language=he-IL`;
+
+    return fetch(url)
+        .then(readJson)
+        .then(data => {
+            return type === "movie" ? data.title : data.name;
+        })
+        .catch(() => null);
 }
 
 // Export for Nuvio
