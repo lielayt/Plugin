@@ -1,16 +1,27 @@
-{
-  "name": "My Nuvio Repo",
-  "version": "1.0.0",
-  "scrapers": [
-    {
-      "id": "Emby",
-      "name": "Emby",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/emby.js",
-      "enabled": true
-    }
-  ]
-}
+[
+  {
+    "id": "emby",
+    "name": "Emby",
+    "description": "Emby provider",
+    "version": "1.0.0",
+    "author": "lielayt",
+    "supportedTypes": [
+      "movie",
+      "tv"
+    ],
+    "filename": "providers/emby.js",
+    "enabled": true,
+    "logo": "",
+    "contentLanguage": [
+      "he",
+      "en"
+    ],
+    "formats": [
+      "mp4",
+      "mkv"
+    ],
+    "limited": false,
+    "disabledPlatforms": [],
+    "supportsExternalPlayer": true
+  }
+]
