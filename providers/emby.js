@@ -1,8 +1,8 @@
 const EMBY_SERVER = "https://play.embyil.tv:443";
-const USERNAME = "s851pmcm";
-const PASSWORD = "Aa10203040!!";
-const USER_ID = "3ee5327c07d44fed9e44b65958f990f1";
 const PROVIDER_ID = "Emby";
+const CREDENTIALS_GIST_RAW_URL = "https://gist.githubusercontent.com/lielayt/01e8aec73350f3d7b35469d69eb15dc6/raw";
+const CREDENTIALS_OWNER_LABEL = "Liel";
+let cachedCredentialsPromise = null;
 
 function getStreams(tmdbId, mediaType, season, episode) {
     const seasonNum = toNumberOrNull(season);
@@ -12,33 +12,36 @@ function getStreams(tmdbId, mediaType, season, episode) {
 
     console.log(`[${PROVIDER_ID}] request tmdb=${tmdbId} mediaType=${mediaType} season=${season} episode=${episode}`);
 
-    return login()
-        .then(token => {
+    return getCredentials()
+        .then(credentials => login(credentials))
+        .then(auth => {
+            const token = auth.accessToken;
+            const userId = auth.userId;
             if (isTv) {
-                return findSeriesByTmdb(token, tmdbId)
+                return findSeriesByTmdb(token, userId, tmdbId)
                     .then(series => {
                         if (!series || seasonNum == null || episodeNum == null) {
                             console.log(`[${PROVIDER_ID}] no series or missing season/episode`);
                             return [];
                         }
-                        return findEpisode(token, series.Id, seasonNum, episodeNum)
+                        return findEpisode(token, userId, series.Id, seasonNum, episodeNum)
                             .then(ep => {
                                 if (!ep) {
                                     console.log(`[${PROVIDER_ID}] episode not found for S${seasonNum}E${episodeNum}`);
                                     return [];
                                 }
-                                return toStream(ep, token).then(stream => [stream]);
+                                return toStream(ep, token, userId).then(stream => [stream]);
                             });
                     });
             }
 
-            return findMovieByTmdb(token, tmdbId)
+            return findMovieByTmdb(token, userId, tmdbId)
                 .then(movie => {
                     if (!movie) {
                         console.log(`[${PROVIDER_ID}] movie not found`);
                         return [];
                     }
-                    return toStream(movie, token).then(stream => [stream]);
+                    return toStream(movie, token, userId).then(stream => [stream]);
                 });
         })
         .catch(err => {
@@ -47,7 +50,34 @@ function getStreams(tmdbId, mediaType, season, episode) {
         });
 }
 
-function login() {
+function getCredentials() {
+    if (!cachedCredentialsPromise) {
+        cachedCredentialsPromise = fetch(CREDENTIALS_GIST_RAW_URL)
+            .then(readText)
+            .then(parseCredentialsFromGistText);
+    }
+    return cachedCredentialsPromise;
+}
+
+function parseCredentialsFromGistText(text) {
+    const cleaned = String(text || "").replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, "");
+    const lines = cleaned
+        .split(/\r?\n/)
+        .map(line => String(line || "").trim())
+        .filter(Boolean);
+
+    const ownerIndex = lines.findIndex(line => line.toLowerCase() === CREDENTIALS_OWNER_LABEL.toLowerCase());
+    if (ownerIndex === -1 || !lines[ownerIndex + 1] || !lines[ownerIndex + 2]) {
+        throw new Error(`Credentials for "${CREDENTIALS_OWNER_LABEL}" not found in gist`);
+    }
+
+    return {
+        username: lines[ownerIndex + 1],
+        password: lines[ownerIndex + 2]
+    };
+}
+
+function login(credentials) {
     const headers = {
         "Content-Type": "application/json",
         "X-Emby-Authorization": 'Emby Client="EmbyWeb", Device="Android TV", DeviceId="androidtv-1234", Version="1.0.0"'
@@ -56,31 +86,33 @@ function login() {
     return fetch(`${EMBY_SERVER}/Users/AuthenticateByName`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ Username: USERNAME, Pw: PASSWORD })
+        body: JSON.stringify({ Username: credentials.username, Pw: credentials.password })
     })
         .then(readJson)
         .then(data => {
             if (!data.AccessToken) throw new Error("No AccessToken returned");
-            return data.AccessToken;
+            const userId = (data.User && data.User.Id) || data.UserId || (data.SessionInfo && data.SessionInfo.UserId);
+            if (!userId) throw new Error("No UserId returned");
+            return { accessToken: data.AccessToken, userId };
         });
 }
 
-function findMovieByTmdb(token, tmdbId) {
-    const url = `${EMBY_SERVER}/Users/${USER_ID}/Items?AnyProviderIdEquals=Tmdb.${encodeURIComponent(tmdbId)}&IncludeItemTypes=Movie&Recursive=true&Limit=1&api_key=${token}`;
+function findMovieByTmdb(token, userId, tmdbId) {
+    const url = `${EMBY_SERVER}/Users/${userId}/Items?AnyProviderIdEquals=Tmdb.${encodeURIComponent(tmdbId)}&IncludeItemTypes=Movie&Recursive=true&Limit=1&api_key=${token}`;
     return fetch(url)
         .then(readJson)
         .then(data => data.Items && data.Items[0]);
 }
 
-function findSeriesByTmdb(token, tmdbId) {
-    const url = `${EMBY_SERVER}/Users/${USER_ID}/Items?AnyProviderIdEquals=Tmdb.${encodeURIComponent(tmdbId)}&IncludeItemTypes=Series&Recursive=true&Limit=1&api_key=${token}`;
+function findSeriesByTmdb(token, userId, tmdbId) {
+    const url = `${EMBY_SERVER}/Users/${userId}/Items?AnyProviderIdEquals=Tmdb.${encodeURIComponent(tmdbId)}&IncludeItemTypes=Series&Recursive=true&Limit=1&api_key=${token}`;
     return fetch(url)
         .then(readJson)
         .then(data => data.Items && data.Items[0]);
 }
 
-function findEpisode(token, seriesId, seasonNum, episodeNum) {
-    const url = `${EMBY_SERVER}/Shows/${seriesId}/Episodes?UserId=${USER_ID}&Season=${seasonNum}&api_key=${token}`;
+function findEpisode(token, userId, seriesId, seasonNum, episodeNum) {
+    const url = `${EMBY_SERVER}/Shows/${seriesId}/Episodes?UserId=${userId}&Season=${seasonNum}&api_key=${token}`;
     return fetch(url)
         .then(readJson)
         .then(data => {
@@ -89,8 +121,8 @@ function findEpisode(token, seriesId, seasonNum, episodeNum) {
         });
 }
 
-function toStream(item, token) {
-    return getSubtitles(token, item.Id).then(subtitles => ({
+function toStream(item, token, userId) {
+    return getSubtitles(token, userId, item.Id).then(subtitles => ({
         name: PROVIDER_ID,
         title: item.Name || "Emby Stream",
         url: `${EMBY_SERVER}/Videos/${item.Id}/stream?static=true&api_key=${token}`,
@@ -100,8 +132,8 @@ function toStream(item, token) {
     }));
 }
 
-function getSubtitles(token, itemId) {
-    const url = `${EMBY_SERVER}/Items/${itemId}/PlaybackInfo?UserId=${USER_ID}&api_key=${token}`;
+function getSubtitles(token, userId, itemId) {
+    const url = `${EMBY_SERVER}/Items/${itemId}/PlaybackInfo?UserId=${userId}&api_key=${token}`;
     return fetch(url, { method: "POST" })
         .then(readJson)
         .then(data => buildSubtitleTracks(itemId, token, data))
@@ -180,6 +212,11 @@ function toNumberOrNull(value) {
 function readJson(res) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+}
+
+function readText(res) {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
 }
 
 // Export for Nuvio
