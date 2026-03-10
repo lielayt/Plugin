@@ -157,7 +157,7 @@ function toStream(item, token, userId) {
                 url: `${EMBY_SERVER}/Videos/${item.Id}/stream?static=true&api_key=${token}`,
                 quality,
                 provider: PROVIDER_ID,
-                icon: "https://raw.githubusercontent.com/lielayt/plugin/main/Assets/emby.png"
+                logo: "https://raw.githubusercontent.com/lielayt/plugin/main/Assets/emby.png"
             };
         });
 }
