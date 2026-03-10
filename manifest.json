@@ -1,6 +1,7 @@
 {
   "name": "My Nuvio Repo",
   "version": "1.0.0",
+  "logo": "https://raw.githubusercontent.com/lielayt/plugin/main/Assets/emby.png",
   "scrapers": [
     {
       "id": "emby",
